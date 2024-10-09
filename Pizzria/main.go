@@ -4,6 +4,7 @@ import (
 	"math/rand"
 	"time"
 	"github.com/fatih/color"
+	"fmt"
 )
 const NumberOfPizzas = 10
 
@@ -35,6 +36,41 @@ func main() {
 
 	// run the producer in the background
 	go pizzeria(pizzaJob)
+
+	// create and run consumer
+	for i:= range pizzaJob.data {
+		if i.pizzaNumber <= NumberOfPizzas {
+			if i.success {
+				color.Green(i.message)
+				color.Green("Order #%d is out for delivery!", i.pizzaNumber)
+			} else {
+				color.Red(i.message)
+				color.Red("The customer is really mad!")
+			}
+		} else {
+			color.Cyan("Done making pizzas...")
+			err := pizzaJob.Close()
+			if err != nil {
+				color.Red("*** Error closing channel!", err)
+			}
+		}
+	}
+	color.Cyan("-----------------")
+	color.Cyan("Done for the day.")
+	color.Cyan("We made %d pizzas, but failed to make %d, with %d attempts in total.", pizzasMade, pizzasFailed, total)
+
+	switch {
+	case pizzasFailed > 9:
+		color.Red("It was an awful day...")
+	case pizzasFailed >= 6:
+		color.Red("It was not a very good day...")
+	case pizzasFailed >= 4:
+		color.Yellow("It was a okay day...")
+	case pizzasFailed >= 2:
+		color.Yellow("It was a pretty good day!")
+	default:
+		color.Green("It was a great day!")
+	}
 }
 
 func pizzeria(pizzaMaker *Producer) {
@@ -43,6 +79,16 @@ func pizzeria(pizzaMaker *Producer) {
 
 	for {
 		currentPizza := makePizza(i)
+		if currentPizza != nil {
+			i = currentPizza.pizzaNumber
+			select {
+			case pizzaMaker.data <- *currentPizza: 
+			case quitChannel := <- pizzaMaker.quit:
+				close(pizzaMaker.data)
+				close(quitChannel)
+				return
+			}
+		}
 	}
 }
 
@@ -79,7 +125,7 @@ func makePizza(pizzaNumber int) *PizzaOrder {
 		p := PizzaOrder{
 			pizzaNumber: pizzaNumber,
 			message: msg,
-			success: successs,
+			success: success,
 		}
 
 		return &p
